@@ -41,5 +41,9 @@ Exported proofs and analysis results are stored in the `/reports` directory.
 - `latest-scan.json`: Output of the static analysis scanner.
 - `concurrency-graph.dot`: Graphviz representation of identified shared locks.
 
+## Testing & Changelog
+- **Testing:** All verification tools are tested via `npm test` and `BUILD_GUARD.sh`.
+- **Changelog:** Formal verification documentation and generator added to the protocol toolkit.
+
 ---
 *Last Updated: 2026-06-19*
