@@ -6,6 +6,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
+    "build:ui": "esbuild src/ui/BreakerButton.tsx --bundle --minify --outfile=dist/ui/breaker.js --loader:.css=text",
     "test": "jest",
     "test:watch": "jest --watch",
     "lint": "eslint src --ext .ts",
@@ -14,13 +15,7 @@
     "backup": "ts-node src/backup.ts backup",
     "restore": "ts-node src/backup.ts restore"
   },
-  "keywords": [
-    "opa",
-    "policy-as-code",
-    "security",
-    "pr-compliance",
-    "vero"
-  ],
+  "keywords": ["opa","policy-as-code","security","pr-compliance","vero"],
   "author": "Vero Security Team",
   "license": "MIT",
   "dependencies": {
@@ -41,7 +36,5 @@
     "ts-jest": "^29.1.0",
     "ts-node": "^10.9.0"
   },
-  "engines": {
-    "node": ">=20.0.0"
-  }
+  "engines": { "node": ">=20.0.0" }
 }
