@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Vero Verifiable Audit Trail
  * Computes SHA-256 of audit report files and submits them as Stellar
  * transaction memos (or Soroban contract calls) for on-chain immutability.
@@ -16,6 +16,15 @@ import {
   Asset,
   Horizon,
 } from "@stellar/stellar-sdk";
+
+export {
+  appendIncidentLog,
+  logSecurityIncident,
+  type IncidentSeverity,
+  type IncidentStatus,
+  type SecurityIncidentInput,
+  type SecurityIncidentLogEntry,
+} from "./incident-logger";
 
 const { Server } = Horizon;
 
