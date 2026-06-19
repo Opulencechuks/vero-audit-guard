@@ -1,0 +1,22 @@
+{
+  "name": "vero-audit-trail",
+  "version": "0.1.0",
+  "description": "Stores cryptographic hashes of audit reports on the Stellar/Soroban chain",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "jest --passWithNoTests"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "12.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "20.14.0",
+    "typescript": "5.4.5",
+    "jest": "29.7.0",
+    "@types/jest": "29.5.12",
+    "ts-jest": "29.1.4",
+    "ts-node": "10.9.2"
+  }
+}
