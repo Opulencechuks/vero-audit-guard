@@ -149,6 +149,13 @@ jobs:
                 body += `  > ${w.detail}\n\n`;
               }
             }
+
+            // Add security tip
+            if (result.security_tip) {
+              body += '---\n';
+              body += `### 🎓 Security Training: ${result.security_tip.title}\n\n`;
+              body += `${result.security_tip.content}\n\n`;
+            }
             
             // Add footer
             body += '---\n';
