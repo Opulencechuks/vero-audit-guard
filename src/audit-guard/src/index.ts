@@ -12,4 +12,5 @@ export type {
 
 // Re-export for convenience
 import PolicyEngine from "./policy-engine";
+export { BreakerButton } from "./ui/BreakerButton";
 export default PolicyEngine;
