@@ -11,7 +11,8 @@
     "lint": "eslint src --ext .ts",
     "evaluate": "ts-node src/cli.ts",
     "check-pr": "ts-node src/cli.ts pr",
-    "archive-logs": "ts-node src/archive-cli.ts"
+    "backup": "ts-node src/backup.ts backup",
+    "restore": "ts-node src/backup.ts restore"
   },
   "keywords": [
     "opa",
