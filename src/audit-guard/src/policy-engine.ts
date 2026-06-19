@@ -4,6 +4,7 @@
  */
 
 import { execSync } from "child_process";
+import { performance } from "perf_hooks";
 import * as fs from "fs";
 import * as path from "path";
 import { SecurityTip, SECURITY_TIPS } from "./security-tips";
@@ -121,6 +122,7 @@ export class PolicyEngine {
    * Evaluate PR data against policies
    */
   async evaluate(prData: PRData): Promise<EvaluationResult> {
+    const start = performance.now();
     let result: EvaluationResult;
 
     if (!this.opaAvailable) {
@@ -136,6 +138,16 @@ export class PolicyEngine {
 
     // Add security tip to result
     result.security_tip = this.getSecurityTip(prData);
+
+    const duration = performance.now() - start;
+    const thresholdMs = 2000; // 2 seconds threshold
+    if (duration > thresholdMs) {
+      void sendAlert({
+        repository: "audit-guard",
+        alert: `PolicyEngine evaluation slow: ${Math.round(duration)}ms`,
+        timestamp: new Date().toISOString(),
+      });
+    }
     return result;
   }
 
