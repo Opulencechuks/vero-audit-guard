@@ -46,7 +46,7 @@ describe("AuditTrail", () => {
     it("should throw error if AUDIT_KEYPAIR_SECRET is not set", async () => {
       delete process.env.AUDIT_KEYPAIR_SECRET;
 
-      await expect(trail.anchor(mockResult, 123)).rejects.toThrow(
+      await expect(trail.anchor(mockResult)).rejects.toThrow(
         "AUDIT_KEYPAIR_SECRET environment variable not set"
       );
     });
@@ -57,7 +57,7 @@ describe("AuditTrail", () => {
       process.env.AUDIT_KEYPAIR_SECRET = "SB6X6XG7ZJPHX663W6K2N63X6XG7ZJPHX663W6K2N63X6XG7ZJPHX663W"; // Still invalid format for SDK
 
       try {
-          await trail.anchor(mockResult, 123);
+          await trail.anchor(mockResult);
       } catch (e: any) {
           // Expected to fail because of invalid secret or network issues
           expect(e.message).toBeDefined();

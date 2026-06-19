@@ -39,7 +39,7 @@ export class AuditTrail {
   /**
    * Anchor hash on Stellar ledger
    */
-  public async anchor(result: EvaluationResult, prNumber: number): Promise<string> {
+  public async anchor(result: EvaluationResult): Promise<string> {
     const secretKey = process.env.AUDIT_KEYPAIR_SECRET;
     if (!secretKey) {
       throw new Error("AUDIT_KEYPAIR_SECRET environment variable not set");
@@ -52,10 +52,8 @@ export class AuditTrail {
     try {
       const account = await server.loadAccount(keypair.publicKey());
 
-      // Memo format: v:pr<number>:<short-hash>
-      // Max 28 characters
-      const shortHash = hash.slice(0, 15);
-      const memoText = `v:pr${prNumber}:${shortHash}`;
+      // Use MEMO_HASH for full 256-bit collision resistance
+      // hash is a 64-character hex string (32 bytes)
 
       const tx = new TransactionBuilder(account, {
         fee: "100",
@@ -68,7 +66,7 @@ export class AuditTrail {
             amount: "0.0000001",
           })
         )
-        .addMemo(Memo.text(memoText))
+        .addMemo(Memo.hash(hash))
         .setTimeout(30)
         .build();
 

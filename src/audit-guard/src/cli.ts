@@ -40,7 +40,7 @@ async function checkPR(): Promise<void> {
     console.log("🔗 Anchoring audit report on-chain...");
     try {
       const trail = new AuditTrail();
-      const txHash = await trail.anchor(result, prData.pull_request.number);
+      const txHash = await trail.anchor(result);
       console.log(`✅ Audit report anchored. Stellar TX: ${txHash}`);
 
       // Add anchoring info to result for the report
