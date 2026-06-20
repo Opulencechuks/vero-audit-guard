@@ -140,14 +140,11 @@ export class PolicyEngine {
     // Add security tip to result
     result.security_tip = this.getSecurityTip(prData);
 
-    const duration = performance.now() - start;
-    const thresholdMs = 2000; // 2 seconds threshold
-    if (duration > thresholdMs) {
-      void sendAlert({
-        repository: "audit-guard",
-        alert: `PolicyEngine evaluation slow: ${Math.round(duration)}ms`,
-        timestamp: new Date().toISOString(),
-      });
+    // Surface a maintenance-mode banner if the relayer/PR is in maintenance.
+    if (prData.maintenance_mode) {
+      result.maintenance_alert =
+        prData.maintenance_message ||
+        "Maintenance mode enabled — review automated checks before merge.";
     }
     return result;
   }
