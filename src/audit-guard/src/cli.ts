@@ -7,10 +7,7 @@
 import * as fs from "fs";
 import PolicyEngine, { PRData } from "./policy-engine";
 import LogicErrorDetector, { LogicScanOptions } from "./logic-detector";
-import {
-  DEFAULT_SEVERITY_THRESHOLD,
-  evaluateSecurityGateFromJson,
-} from "./security-gate";
+import EventLogScanner from "./event-log-scanner";
 
 async function main() {
   const args = process.argv.slice(2);
@@ -20,12 +17,50 @@ async function main() {
     await checkPR();
   } else if (command === "detect-logic") {
     await detectLogic(args);
-  } else if (command === "security-gate") {
-    await runSecurityGate(args);
+  } else if (command === "scan-events") {
+    scanEvents(args);
   } else if (command === "help") {
     printHelp();
   } else {
     await evaluate();
+  }
+}
+
+/**
+ * Scan JSONL or key=value audit event logs for sensitive access events.
+ *
+ * Environment variables:
+ *   EVENT_LOG_FILE      File to scan (default: positional arg or logs/relay-events.log)
+ *   REPORT_FILE         If set, writes a markdown report to this path
+ */
+function scanEvents(args: string[]): void {
+  const eventLogFile =
+    process.env.EVENT_LOG_FILE || args[1] || "./logs/relay-events.log";
+  if (!fs.existsSync(eventLogFile)) {
+    console.error(`Event log file not found: ${eventLogFile}`);
+    console.log("Usage: scan-events <event-log-file>");
+    process.exit(1);
+  }
+
+  const scanner = new EventLogScanner();
+  const result = scanner.scanFile(eventLogFile);
+  const report = scanner.generateReport(result);
+
+  console.log("\nEvent Log Scan\n");
+  console.log(report);
+  console.log("\nRaw Result:");
+  console.log(JSON.stringify(result, null, 2));
+
+  if (process.env.REPORT_FILE) {
+    fs.writeFileSync(process.env.REPORT_FILE, report);
+    console.log(`\nReport written to: ${process.env.REPORT_FILE}`);
+  }
+
+  const blockingEvent = result.sensitiveEvents.some((event) =>
+    event.severity === "HIGH" || event.severity === "CRITICAL"
+  );
+  if (blockingEvent) {
+    process.exit(1);
   }
 }
 
@@ -210,7 +245,7 @@ Usage: policy-engine <command> [options]
 Commands:
   pr, check-pr      Check PR compliance using GitHub Actions context
   detect-logic      Scan a source file for logic-bug patterns (issue #16)
-  security-gate     Fail CI when scan findings exceed severity threshold
+  scan-events       Scan audit event logs for sensitive access events
   evaluate          Evaluate PR data from a JSON file (default)
   help              Show this help message
 
@@ -219,9 +254,8 @@ Environment Variables:
   REPORT_FILE           Output path for markdown report
   OPA_POLICIES_DIR      Path to OPA policies directory
   SOURCE_FILE           Source file for 'detect-logic' (default: ./src.ts)
-  LOGIC_PATTERN_FILTER        Comma-separated pattern IDs to restrict the scan
-  SCAN_REPORT_FILE            Scanner JSON report for 'security-gate'
-  SECURITY_SEVERITY_THRESHOLD Block when severity rank exceeds this value (default: 3)
+  LOGIC_PATTERN_FILTER  Comma-separated pattern IDs to restrict the scan
+  EVENT_LOG_FILE        Event log file for 'scan-events'
 
 Examples:
   node dist/cli.js pr
@@ -230,7 +264,7 @@ Examples:
   node dist/cli.js detect-logic ./path/to/contract.sol
   LOGIC_PATTERN_FILTER=REENTRANCY_RISK,UNCHECKED_RETURN_VALUE \
     REPORT_FILE=./report.md node dist/cli.js detect-logic ./contract.sol
-  SCAN_REPORT_FILE=./reports/latest-scan.json node dist/cli.js security-gate
+  node dist/cli.js scan-events ./logs/relay-events.log
 `);
 }
 
