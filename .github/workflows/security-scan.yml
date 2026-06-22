@@ -35,6 +35,13 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@cargo-audit
+
+      - name: Audit Rust dependencies for known vulnerabilities
+        run: cargo audit --deny warnings
+        working-directory: scanner-engine
+
       - name: Build scanner-engine
         run: cargo build --release
         working-directory: scanner-engine
