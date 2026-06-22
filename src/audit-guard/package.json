@@ -12,6 +12,7 @@
     "lint": "eslint src --ext .ts",
     "evaluate": "ts-node src/cli.ts",
     "check-pr": "ts-node src/cli.ts pr",
+    "security-gate": "ts-node --transpile-only src/security-gate-cli.ts",
     "backup": "ts-node src/backup.ts backup",
     "restore": "ts-node src/backup.ts restore"
   },

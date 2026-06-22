@@ -7,6 +7,10 @@
 import * as fs from "fs";
 import PolicyEngine, { PRData } from "./policy-engine";
 import LogicErrorDetector, { LogicScanOptions } from "./logic-detector";
+import {
+  DEFAULT_SEVERITY_THRESHOLD,
+  evaluateSecurityGateFromJson,
+} from "./security-gate";
 
 async function main() {
   const args = process.argv.slice(2);
@@ -16,6 +20,8 @@ async function main() {
     await checkPR();
   } else if (command === "detect-logic") {
     await detectLogic(args);
+  } else if (command === "security-gate") {
+    await runSecurityGate(args);
   } else if (command === "help") {
     printHelp();
   } else {
@@ -146,6 +152,55 @@ async function detectLogic(args: string[]): Promise<void> {
   }
 }
 
+/**
+ * Evaluate a scanner report and fail the build on blocking findings.
+ *
+ * Environment variables:
+ *   SCAN_REPORT_FILE           Path to scanner JSON report (default: ./reports/latest-scan.json)
+ *   SECURITY_SEVERITY_THRESHOLD  Block when severity rank > threshold (default: 3)
+ *
+ * Exit codes:
+ *   0  — gate passed
+ *   1  — blocking findings or scan report error
+ */
+async function runSecurityGate(args: string[]): Promise<void> {
+  const reportPath =
+    process.env.SCAN_REPORT_FILE || args[1] || "./reports/latest-scan.json";
+  const threshold = Number(
+    process.env.SECURITY_SEVERITY_THRESHOLD ?? DEFAULT_SEVERITY_THRESHOLD
+  );
+
+  if (!fs.existsSync(reportPath)) {
+    console.error(`❌ Scan report not found: ${reportPath}`);
+    process.exit(1);
+  }
+
+  const json = fs.readFileSync(reportPath, "utf-8");
+  const result = evaluateSecurityGateFromJson(json, threshold);
+
+  console.log("\n🔒 Security Gate\n");
+  console.log(`Threshold : severity rank > ${result.threshold}`);
+  console.log(`Findings  : ${result.totalFindings}`);
+  console.log(`Blocking  : ${result.blockingFindings.length}`);
+  console.log(`\n${result.summary}\n`);
+
+  if (result.blockingFindings.length > 0) {
+    console.log("Blocking findings:");
+    for (const finding of result.blockingFindings) {
+      console.log(
+        `  [${finding.severity}] ${finding.file}:${finding.line} — ${finding.rule}`
+      );
+    }
+  }
+
+  console.log("\n📊 Raw Result:");
+  console.log(JSON.stringify(result, null, 2));
+
+  if (!result.passed) {
+    process.exit(1);
+  }
+}
+
 function printHelp(): void {
   console.log(`
 Policy Engine CLI
@@ -155,6 +210,7 @@ Usage: policy-engine <command> [options]
 Commands:
   pr, check-pr      Check PR compliance using GitHub Actions context
   detect-logic      Scan a source file for logic-bug patterns (issue #16)
+  security-gate     Fail CI when scan findings exceed severity threshold
   evaluate          Evaluate PR data from a JSON file (default)
   help              Show this help message
 
@@ -163,7 +219,9 @@ Environment Variables:
   REPORT_FILE           Output path for markdown report
   OPA_POLICIES_DIR      Path to OPA policies directory
   SOURCE_FILE           Source file for 'detect-logic' (default: ./src.ts)
-  LOGIC_PATTERN_FILTER  Comma-separated pattern IDs to restrict the scan
+  LOGIC_PATTERN_FILTER        Comma-separated pattern IDs to restrict the scan
+  SCAN_REPORT_FILE            Scanner JSON report for 'security-gate'
+  SECURITY_SEVERITY_THRESHOLD Block when severity rank exceeds this value (default: 3)
 
 Examples:
   node dist/cli.js pr
@@ -172,6 +230,7 @@ Examples:
   node dist/cli.js detect-logic ./path/to/contract.sol
   LOGIC_PATTERN_FILTER=REENTRANCY_RISK,UNCHECKED_RETURN_VALUE \
     REPORT_FILE=./report.md node dist/cli.js detect-logic ./contract.sol
+  SCAN_REPORT_FILE=./reports/latest-scan.json node dist/cli.js security-gate
 `);
 }
 
