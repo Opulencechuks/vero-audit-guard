@@ -30,6 +30,18 @@ export type {
   DetectionContext,
 } from "./logic-patterns";
 
+export {
+  default as EventLogScanner,
+  generateEventLogReport,
+} from "./event-log-scanner";
+export type {
+  EventLogEntry,
+  EventLogIndex,
+  EventLogScanResult,
+  EventLogScannerOptions,
+  EventSeverity,
+} from "./event-log-scanner";
+
 // Re-export the evaluated PolicyEngine as the package-default for
 // backwards-compat with existing callers.
 import PolicyEngine from "./policy-engine";

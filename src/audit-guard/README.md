@@ -191,6 +191,40 @@ npm run backup -- ./logs user@example.com:/var/backups/vero-logs
 - `BACKUP_TARGET`
 - `--dry-run`
 
+## Event Log Scanner
+
+The audit-guard package can also parse relay/audit event logs, index events for
+review, and highlight sensitive access activity such as unauthorized access,
+privilege changes, admin overrides, secret access, and token exposure.
+
+### Scan an Event Log
+
+```bash
+npm run scan-events -- ./logs/relay-events.log
+```
+
+The scanner accepts JSONL logs and simple `key=value` lines. It indexes every
+event by type, actor, and repository while surfacing sensitive events in a
+markdown report.
+
+### Programmatic Usage
+
+```typescript
+import { EventLogScanner } from '@vero/audit-guard-policy-engine';
+
+const scanner = new EventLogScanner();
+const result = scanner.scanFile('./logs/relay-events.log');
+
+console.log(result.totalEvents);
+console.log(result.sensitiveEvents);
+console.log(result.index.byType.unauthorized_access);
+```
+
+### Environment Variables
+
+- `EVENT_LOG_FILE`
+- `REPORT_FILE`
+
 ## PR Data Format
 
 ```json
