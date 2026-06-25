@@ -14,7 +14,8 @@
     "check-pr": "ts-node src/cli.ts pr",
     "scan-events": "ts-node src/cli.ts scan-events",
     "backup": "ts-node src/backup.ts backup",
-    "restore": "ts-node src/backup.ts restore"
+    "restore": "ts-node src/backup.ts restore",
+    "security-gate": "ts-node src/security-gate-cli.ts"
   },
   "keywords": ["opa","policy-as-code","security","pr-compliance","vero"],
   "author": "Vero Security Team",
