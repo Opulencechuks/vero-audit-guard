@@ -9,6 +9,10 @@ import PolicyEngine, { PRData } from "./policy-engine";
 import LogicErrorDetector, { LogicScanOptions } from "./logic-detector";
 import EventLogScanner from "./event-log-scanner";
 import { OnCallRoster } from "./oncall-roster";
+import {
+  evaluateSecurityGateFromJson,
+  DEFAULT_SEVERITY_THRESHOLD,
+} from "./security-gate";
 
 async function main() {
   const args = process.argv.slice(2);
@@ -22,6 +26,8 @@ async function main() {
     scanEvents(args);
   } else if (command === "roster") {
     await rosterCommand(args);
+  } else if (command === "security-gate") {
+    await runSecurityGate(args);
   } else if (command === "help") {
     printHelp();
   } else {
