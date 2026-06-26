@@ -6,9 +6,11 @@
 import { execSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
-import { SecurityTip, SECURITY_TIPS } from "./security-tips";
+import DashboardClient from "./dashboard-client";
 import { getNextReportVersion } from "./report-version";
+import { SECURITY_TIPS, SecurityTip } from "./security-tips";
 import { sendAlert } from "./webhook";
+
 export interface PRData {
   pull_request: {
     title: string;
@@ -51,8 +53,7 @@ export interface EvaluationResult {
   violations_count: number;
   warnings_count: number;
   high_severity_violations: PolicyViolation[];
-  security_tip?: SecurityTip;
-  maintenance_alert?: string;
+  anchored_tx?: string;
 }
 
 /**
@@ -359,10 +360,80 @@ export class PolicyEngine {
   }
 
   /**
+   * Reports evaluation result to the Guardian Dashboard
+   */
+  async reportToDashboard(
+    result: EvaluationResult,
+    prData: PRData
+  ): Promise<void> {
+    const dashUrl = process.env.GUARDIAN_DASH_URL;
+    const dashToken = process.env.GUARDIAN_DASH_TOKEN || "";
+
+    if (!dashUrl) {
+      return;
+    }
+
+    const client = new DashboardClient(dashUrl, dashToken);
+    const alerts: Promise<boolean>[] = [];
+
+    // Report violations
+    for (const v of result.violations) {
+      alerts.push(
+        client.sendAlert({
+          source: "audit-guard",
+          type: v.rule,
+          severity: v.severity,
+          message: v.message,
+          detail: v.detail,
+          timestamp: new Date().toISOString(),
+          metadata: {
+            pr_number: prData.pull_request.number,
+            pr_author: prData.pull_request.author,
+            pr_title: prData.pull_request.title,
+            status: result.status,
+          },
+        })
+      );
+    }
+
+    // Report warnings if they are high severity
+    for (const w of result.warnings) {
+      if (w.severity === "HIGH" || w.severity === "CRITICAL") {
+        alerts.push(
+          client.sendAlert({
+            source: "audit-guard",
+            type: w.rule,
+            severity: w.severity,
+            message: w.message,
+            detail: w.detail,
+            timestamp: new Date().toISOString(),
+            metadata: {
+              pr_number: prData.pull_request.number,
+              pr_author: prData.pull_request.author,
+              pr_title: prData.pull_request.title,
+              status: result.status,
+            },
+          })
+        );
+      }
+    }
+
+    await Promise.all(alerts);
+  }
+
+  /**
    * Generate markdown report
    */
   generateReport(result: EvaluationResult): string {
     let report = "";
+
+    // Maintenance Mode Notice
+    if (process.env.MAINTENANCE_MODE === "true") {
+      const msg =
+        process.env.MAINTENANCE_MESSAGE ||
+        "System undergoing maintenance. Compliance checks may be delayed.";
+      report += `> 🛠️ **MAINTENANCE NOTICE:** ${msg}\n\n`;
+    }
 
     // Header
     const emoji =
@@ -411,11 +482,11 @@ export class PolicyEngine {
       }
     }
 
-    // Security Training tip
-    if (result.security_tip) {
-      report += "---\n";
-      report += `### 🎓 Security Training: ${result.security_tip.title}\n\n`;
-      report += `${result.security_tip.content}\n\n`;
+    // Anchoring info
+    if (result.anchored_tx) {
+      report += "### 🔗 Immutable Audit Trail\n\n";
+      report += `This audit report has been anchored to the Stellar ledger for immutability.\n`;
+      report += `**Transaction Hash:** \`${result.anchored_tx}\`\n\n`;
     }
 
     // Compliance tip

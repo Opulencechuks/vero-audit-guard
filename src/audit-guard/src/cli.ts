@@ -5,11 +5,18 @@
  */
 
 import * as fs from "fs";
+import * as dotenv from "dotenv";
 import PolicyEngine, { PRData } from "./policy-engine";
 import LogicErrorDetector, { LogicScanOptions } from "./logic-detector";
 import EventLogScanner from "./event-log-scanner";
 import { OnCallRoster } from "./oncall-roster";
-import InputSanitizationMonitor from "./input-sanitization-monitor";
+import {
+  DEFAULT_SEVERITY_THRESHOLD,
+  evaluateSecurityGateFromJson,
+} from "./security-gate";
+
+// Load environment variables
+dotenv.config();
 
 async function main() {
   const args = process.argv.slice(2);
@@ -23,8 +30,8 @@ async function main() {
     scanEvents(args);
   } else if (command === "roster") {
     await rosterCommand(args);
-  } else if (command === "fuzz-inputs") {
-    await fuzzInputs(args);
+  } else if (command === "security-gate") {
+    await runSecurityGate(args);
   } else if (command === "help") {
     printHelp();
   } else {
@@ -135,6 +142,9 @@ async function checkPR(): Promise<void> {
   const engine = new PolicyEngine();
   const result = await engine.evaluate(prData);
 
+  // Report to dashboard if configured
+  await engine.reportToDashboard(result, prData);
+
   // Output result
   console.log(JSON.stringify(result, null, 2));
 
@@ -175,6 +185,9 @@ async function evaluate(): Promise<void> {
 
   const engine = new PolicyEngine();
   const result = await engine.evaluate(prData);
+
+  // Report to dashboard if configured
+  await engine.reportToDashboard(result, prData);
 
   console.log("\n📋 Policy Compliance Evaluation\n");
   console.log(engine.generateReport(result));
@@ -284,50 +297,46 @@ async function runSecurityGate(args: string[]): Promise<void> {
 }
 
 /**
- * Fuzz a validator function loaded from a JS/TS module against the built-in
- * probe library — issue #14.
+ * Audit an RBAC policy document for privilege escalation and
+ * least-privilege violations — issue #13.
  *
  * Environment variables:
- *   VALIDATOR_MODULE   Path to a JS module that exports a default validator fn
- *   FUZZ_CATEGORIES    Comma-separated probe categories to run (default: all)
+ *   RBAC_POLICY_FILE   Path to RBAC policy JSON (default: positional arg or ./rbac-policy.json)
  *   REPORT_FILE        If set, writes a markdown report to this path
+ *   RBAC_FLAG_ADMIN    Set to 'false' to suppress admin-user findings (default: true)
  *
  * Exit codes:
- *   0  — SAFE
- *   1  — UNSAFE_INPUTS_FOUND or error
+ *   0  — status SAFE
+ *   1  — status VIOLATIONS_FOUND or scan error
  */
-async function fuzzInputs(args: string[]): Promise<void> {
-  const modulePath = process.env.VALIDATOR_MODULE || args[1];
+async function rbacCheck(args: string[]): Promise<void> {
+  const policyFile =
+    process.env.RBAC_POLICY_FILE || args[1] || "./rbac-policy.json";
 
-  if (!modulePath || !fs.existsSync(modulePath)) {
-    console.error("❌ Validator module not found.");
-    console.log("Usage: fuzz-inputs <validator-module.js>");
-    console.log("The module must export a default function: (input: string) => unknown");
+  if (!fs.existsSync(policyFile)) {
+    console.error(`❌ RBAC policy file not found: ${policyFile}`);
+    console.log("Usage: rbac-check <rbac-policy.json>");
+    console.log('Expected shape: { "roles": [...], "users": [...] }');
     process.exit(1);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const mod = require(require("path").resolve(modulePath)) as { default?: unknown };
-  const validator = typeof mod === "function" ? mod : mod?.default;
-
-  if (typeof validator !== "function") {
-    console.error("❌ Module does not export a callable validator function.");
+  let policy: RbacPolicy;
+  try {
+    policy = JSON.parse(fs.readFileSync(policyFile, "utf-8")) as RbacPolicy;
+  } catch (err) {
+    console.error(`❌ Failed to parse RBAC policy file: ${(err as Error).message}`);
     process.exit(1);
   }
 
-  const categories = process.env.FUZZ_CATEGORIES
-    ? (process.env.FUZZ_CATEGORIES.split(",").map((s) => s.trim()) as any)
-    : undefined;
+  const opts: RbacScanOptions = {
+    flagAdminUsers: process.env.RBAC_FLAG_ADMIN !== "false",
+  };
 
-  const monitor = new InputSanitizationMonitor({
-    validatorName: modulePath,
-    categories,
-  });
+  const mapper = new RbacMapper(opts);
+  const result = mapper.scan(policy, opts);
+  const report = mapper.generateReport(result);
 
-  const result = monitor.scan(validator as (input: string) => unknown);
-  const report = monitor.generateReport(result);
-
-  console.log("\n🔬 Input Sanitization Monitor\n");
+  console.log("\n🔐 RBAC Access Control Audit\n");
   console.log(report);
   console.log("\n📊 Raw Result:");
   console.log(JSON.stringify(result, null, 2));
@@ -337,7 +346,7 @@ async function fuzzInputs(args: string[]): Promise<void> {
     console.log(`\n📝 Report written to: ${process.env.REPORT_FILE}`);
   }
 
-  if (result.status === "UNSAFE_INPUTS_FOUND") {
+  if (result.status === "VIOLATIONS_FOUND") {
     process.exit(1);
   }
 }
@@ -352,9 +361,10 @@ Commands:
   pr, check-pr      Check PR compliance using GitHub Actions context
   detect-logic      Scan a source file for logic-bug patterns (issue #16)
   scan-events       Scan audit event logs for sensitive access events
-  fuzz-inputs       Fuzz a validator module against injection/boundary probes
+  rbac-check        Audit RBAC policy for privilege escalation (issue #13)
   evaluate          Evaluate PR data from a JSON file (default)
-  roster            Manage on-call rotation (status|rotate|page)
+  roster            Manage on‑call rotation (status|rotate|page)
+  security-gate     Evaluate scanner report and fail on blocking findings
   help              Show this help message
 
 Environment Variables:
@@ -364,16 +374,18 @@ Environment Variables:
   SOURCE_FILE           Source file for 'detect-logic' (default: ./src.ts)
   LOGIC_PATTERN_FILTER  Comma-separated pattern IDs to restrict the scan
   EVENT_LOG_FILE        Event log file for 'scan-events'
-  VALIDATOR_MODULE      JS module exporting a validator fn for 'fuzz-inputs'
-  FUZZ_CATEGORIES       Comma-separated probe categories for 'fuzz-inputs'
+  RBAC_POLICY_FILE      RBAC policy JSON file for 'rbac-check'
+  RBAC_FLAG_ADMIN       Set to 'false' to suppress admin user findings
 
 Examples:
   node dist/cli.js pr
   node dist/cli.js evaluate ./my-pr-data.json
   node dist/cli.js detect-logic ./path/to/contract.sol
+  LOGIC_PATTERN_FILTER=REENTRANCY_RISK,UNCHECKED_RETURN_VALUE \\
+    REPORT_FILE=./report.md node dist/cli.js detect-logic ./contract.sol
   node dist/cli.js scan-events ./logs/relay-events.log
-  node dist/cli.js fuzz-inputs ./src/validators/username.js
-  FUZZ_CATEGORIES=sql_injection,xss node dist/cli.js fuzz-inputs ./validator.js
+  node dist/cli.js rbac-check ./rbac-policy.json
+  RBAC_POLICY_FILE=./policy.json REPORT_FILE=./rbac-report.md node dist/cli.js rbac-check
 `);
 }
 
