@@ -11,64 +11,14 @@ export type {
   EvaluationResult,
 } from "./policy-engine";
 
-export {
-  default as LogicErrorDetector,
-} from "./logic-detector";
+export { default as LogAnalyzer } from "./log-analyzer";
 export type {
-  LogicFlawFinding,
-  LogicScanResult,
-  LogicScanOptions,
-  LogicSeverity,
-} from "./logic-detector";
+  LogEntry,
+  LogAnomaly,
+  LogAnalyzerConfig,
+} from "./log-analyzer";
 
-export {
-  LOGIC_PATTERNS,
-  LOGIC_PATTERN_IDS,
-} from "./logic-patterns";
-
-export {
-  DEFAULT_SEVERITY_THRESHOLD,
-  SEVERITY_RANK,
-  evaluateSecurityGate,
-  evaluateSecurityGateFromJson,
-  isBlockingSeverity,
-  severityRank,
-} from "./security-gate";
-export type {
-  ScannerFinding,
-  ScannerReport,
-  ScannerSeverity,
-  SecurityGateResult,
-} from "./security-gate";
-export type {
-  LogicPattern,
-  DetectionContext,
-} from "./logic-patterns";
-
-export {
-  default as EventLogScanner,
-  generateEventLogReport,
-} from "./event-log-scanner";
-export type {
-  EventLogEntry,
-  EventLogIndex,
-  EventLogScanResult,
-  EventLogScannerOptions,
-  EventSeverity,
-} from "./event-log-scanner";
-
-export {
-  OnCallRoster,
-} from "./oncall-roster";
-export type {
-  OnCallContact,
-  OnCallRosterConfig,
-  RotationState,
-  PagePayload,
-} from "./oncall-roster";
-
-// Re-export the evaluated PolicyEngine as the package-default for
-// backwards-compat with existing callers.
+// Re-export for convenience
 import PolicyEngine from "./policy-engine";
 export default PolicyEngine;
 

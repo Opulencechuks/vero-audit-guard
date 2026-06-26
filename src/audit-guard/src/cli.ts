@@ -7,9 +7,10 @@
 import * as fs from "fs";
 import * as dotenv from "dotenv";
 import PolicyEngine, { PRData } from "./policy-engine";
-import LogicErrorDetector, { LogicScanOptions } from "./logic-detector";
-import EventLogScanner from "./event-log-scanner";
+import { LogAnalyzer, LogEntry } from "./log-analyzer";
 import { OnCallRoster } from "./oncall-roster";
+import EventLogScanner from "./event-log-scanner";
+import { LogicErrorDetector, LogicScanOptions } from "./logic-detector";
 import {
   evaluateSecurityGateFromJson,
   DEFAULT_SEVERITY_THRESHOLD,
@@ -21,12 +22,14 @@ async function main() {
 
   if (command === "pr" || command === "check-pr") {
     await checkPR();
-  } else if (command === "detect-logic") {
-    await detectLogic(args);
-  } else if (command === "scan-events") {
-    scanEvents(args);
+  } else if (command === "logs" || command === "analyze-logs") {
+    await analyzeLogs();
   } else if (command === "roster") {
     await rosterCommand(args);
+  } else if (command === "scan-events") {
+    scanEvents(args);
+  } else if (command === "detect-logic") {
+    await detectLogic(args);
   } else if (command === "security-gate") {
     await runSecurityGate(args);
   } else if (command === "help") {
@@ -107,7 +110,7 @@ function scanEvents(args: string[]): void {
     console.log(`\nReport written to: ${process.env.REPORT_FILE}`);
   }
 
-  const blockingEvent = result.sensitiveEvents.some((event) =>
+  const blockingEvent = result.sensitiveEvents.some((event: any) =>
     event.severity === "HIGH" || event.severity === "CRITICAL"
   );
   if (blockingEvent) {
@@ -156,6 +159,36 @@ async function checkPR(): Promise<void> {
   if (result.status === "NON_COMPLIANT" && result.high_severity_violations.length > 0) {
     process.exit(1);
   }
+}
+
+/**
+ * Analyze log data from a JSON file
+ */
+async function analyzeLogs(): Promise<void> {
+  const logFile = process.argv[3] || "./logs.json";
+
+  if (!fs.existsSync(logFile)) {
+    console.error(`❌ Log file not found: ${logFile}`);
+    console.log("Usage: analyze-logs <logs.json>");
+    process.exit(1);
+  }
+
+  const logs: LogEntry[] = JSON.parse(fs.readFileSync(logFile, "utf-8"));
+  const analyzer = new LogAnalyzer();
+  const anomalies = analyzer.analyze(logs);
+
+  console.log("\n🔍 Log Anomaly Analysis\n");
+  if (anomalies.length === 0) {
+    console.log("✅ No log anomalies detected.");
+  } else {
+    console.log(`❌ Detected ${anomalies.length} anomaly/anomalies:\n`);
+    for (const a of anomalies) {
+      const emoji = a.severity === "CRITICAL" ? "🚨" : a.severity === "HIGH" ? "❌" : "⚠️";
+      console.log(`${emoji} [${a.type}][${a.severity}] ${a.timestamp} — ${a.message}`);
+    }
+  }
+
+  process.exit(anomalies.length > 0 ? 1 : 0);
 }
 
 /**
@@ -356,9 +389,7 @@ Usage: policy-engine <command> [options]
 
 Commands:
   pr, check-pr      Check PR compliance using GitHub Actions context
-  detect-logic      Scan a source file for logic-bug patterns (issue #16)
-  scan-events       Scan audit event logs for sensitive access events
-  rbac-check        Audit RBAC policy for privilege escalation (issue #13)
+  logs, analyze-logs [file] Analyze relayer logs for anomalies
   evaluate          Evaluate PR data from a JSON file (default)
   roster            Manage on‑call rotation (status|rotate|page)
   security-gate     Evaluate scanner report and fail on blocking findings
@@ -376,6 +407,7 @@ Environment Variables:
 
 Examples:
   node dist/cli.js pr
+  node dist/cli.js analyze-logs ./relayer-logs.json
   node dist/cli.js evaluate ./my-pr-data.json
   node dist/cli.js detect-logic ./path/to/contract.sol
   LOGIC_PATTERN_FILTER=REENTRANCY_RISK,UNCHECKED_RETURN_VALUE \\
