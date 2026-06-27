@@ -131,6 +131,17 @@ deny[msg] {
     }
 }
 
+# Rule: No potential integer overflows allowed
+deny[msg] {
+    finding := input.overflow_findings[_]
+    msg := {
+        "rule": finding.rule,
+        "severity": severity.HIGH,
+        "message": finding.message,
+        "detail": sprintf("%s (at %s:%d)", [finding.detail, finding.file, finding.line])
+    }
+}
+
 # Warnings (advisory, not blocking)
 warning[msg] {
     len(input.pull_request.title) > 100
