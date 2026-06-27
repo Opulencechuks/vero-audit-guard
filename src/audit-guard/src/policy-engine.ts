@@ -12,6 +12,7 @@ import { getNextReportVersion } from "./report-version";
 import { SECURITY_TIPS, SecurityTip } from "./security-tips";
 import { sendAlert } from "./webhook";
 
+
 export interface PRData {
   pull_request: {
     title: string;
@@ -58,6 +59,8 @@ export interface EvaluationResult {
   warnings_count: number;
   high_severity_violations: PolicyViolation[];
   anchored_tx?: string;
+  security_tip?: SecurityTip;
+  maintenance_alert?: string;
 }
 
 /**
@@ -176,7 +179,7 @@ export class PolicyEngine {
    * Evaluate without OPA CLI (fallback implementation)
    */
   private async evaluateWithoutOPA(prData: PRData): Promise<EvaluationResult> {
-    const violations: PolicyViolation[] = [];
+    const violations: PolicyViolation[] = [...this.verifyRelayerSignature(prData)];
     const warnings: PolicyViolation[] = [];
 
     // PR Title checks
@@ -495,6 +498,14 @@ export class PolicyEngine {
       report += "---\n";
       report +=
         "_All mandatory compliance checks passed. Review warnings to ensure best practices._\n";
+    }
+
+    // Security Training Tip
+    if (result.security_tip) {
+      report += "\n---\n";
+      report += `### 🎓 Security Training\n\n`;
+      report += `**${result.security_tip.title}**\n\n`;
+      report += `${result.security_tip.content}\n`;
     }
 
     return report;
