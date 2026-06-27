@@ -58,6 +58,8 @@ export interface EvaluationResult {
   warnings_count: number;
   high_severity_violations: PolicyViolation[];
   anchored_tx?: string;
+  security_tip?: SecurityTip;
+  maintenance_alert?: string;
 }
 
 /**
