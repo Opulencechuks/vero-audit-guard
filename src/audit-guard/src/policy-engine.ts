@@ -23,6 +23,7 @@ export interface PRData {
     author: string;
   };
   files_modified: string[];
+  file_contents?: Record<string, string>;
   additions: number;
   deletions: number;
   dependencies_added?: Array<{
@@ -160,8 +161,15 @@ export class PolicyEngine {
     fs.writeFileSync(tempInput, JSON.stringify(prData, null, 2));
 
     try {
-      const command = `opa eval -d ${this.policiesDir} -i ${tempInput} \
-        "data.pr.compliance.deny; data.pr.compliance.warning; data.pr.compliance.compliance_summary"`;
+      // Use more robust OPA query that doesn't fail if a package is missing
+      const query = `
+        deny := data.pr.compliance.deny | data.pr.dependencies.deny | data.pr.crypto.deny;
+        warning := data.pr.compliance.warning | data.pr.dependencies.warning;
+        summary := data.pr.compliance.compliance_summary;
+        result := {"deny": deny, "warning": warning, "summary": summary}
+      `;
+
+      const command = `opa eval -d ${this.policiesDir} -i ${tempInput} '${query}'`;
 
       const output = execSync(command).toString();
       const result = JSON.parse(output);
@@ -274,6 +282,45 @@ export class PolicyEngine {
       }
     }
 
+    // Crypto security checks
+    const bannedAlgorithms = [
+      {
+        name: "MD5",
+        pattern: /md5['"(]|md5$/i,
+        message: "MD5 is cryptographically broken and should not be used for security purposes.",
+      },
+      {
+        name: "SHA1",
+        pattern: /sha1['"(]|sha1$/i,
+        message: "SHA-1 is no longer considered secure against well-funded opponents.",
+      },
+      {
+        name: "RC4",
+        pattern: /rc4['"(]|rc4$/i,
+        message: "RC4 is insecure and has many known vulnerabilities.",
+      },
+      {
+        name: "DES",
+        pattern: /des['"(]|des$/i,
+        message: "DES has a small key size and can be brute-forced easily.",
+      },
+    ];
+
+    if (prData.file_contents) {
+      for (const [filename, content] of Object.entries(prData.file_contents)) {
+        for (const algo of bannedAlgorithms) {
+          if (algo.pattern.test(content)) {
+            violations.push({
+              rule: "INSECURE_CRYPTO_ALGORITHM",
+              severity: "CRITICAL",
+              message: `❌ Insecure crypto algorithm '${algo.name}' detected in ${filename}`,
+              detail: `${algo.message} Use modern alternatives like SHA-256, SHA-3, or AES.`,
+            });
+          }
+        }
+      }
+    }
+
     // Large change checks
     if (prData.files_modified.length > 20) {
       warnings.push({
@@ -338,10 +385,10 @@ export class PolicyEngine {
    * Parse OPA eval output
    */
   private parseOPAResult(opaOutput: any): EvaluationResult {
-    const expressions = opaOutput.result?.[0]?.expressions || [];
-    const violations: PolicyViolation[] = expressions[0]?.value || [];
-    const warnings: PolicyViolation[] = expressions[1]?.value || [];
-    const summary = expressions[2]?.value?.[0] || {};
+    const bindings = opaOutput.result?.[0]?.bindings?.result || {};
+    const violations: PolicyViolation[] = bindings.deny || [];
+    const warnings: PolicyViolation[] = bindings.warning || [];
+    const summary = bindings.summary?.[0] || {};
 
     const high_severity_violations = violations.filter(
       (v) =>
