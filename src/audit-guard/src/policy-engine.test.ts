@@ -3,6 +3,8 @@
  */
 
 import PolicyEngine, { PRData } from "../src/policy-engine";
+import * as fs from "fs";
+import * as path from "path";
 
 describe("PolicyEngine", () => {
   let engine: PolicyEngine;
@@ -357,6 +359,111 @@ Updated CHANGELOG.md with new feature.
       expect(report).toContain("Policy Compliance Check");
       expect(report).toContain(result.status);
       expect(report).toContain(result.summary);
+    });
+  });
+
+  describe("Integer Overflow Detection", () => {
+    const testFile = path.join(__dirname, "overflow-test.rs");
+
+    afterEach(() => {
+      if (fs.existsSync(testFile)) {
+        fs.unlinkSync(testFile);
+      }
+    });
+
+    it("should flag potential overflow in Rust file", async () => {
+      const content = `
+        fn test() {
+          let a = 10000000000000000000;
+          let b = a * 2;
+        }
+      `;
+      fs.writeFileSync(testFile, content);
+
+      const prData: PRData = {
+        pull_request: {
+          title: "Fix overflow bug in core contract",
+          body: "This PR fixes a potential overflow. Testing included.",
+          labels: ["security"],
+          base_branch: "main",
+          head_branch: "fix/overflow",
+          number: 1,
+          author: "security-expert",
+        },
+        files_modified: [testFile],
+        additions: 10,
+        deletions: 2,
+      };
+
+      const result = await engine.evaluate(prData);
+      expect(result.status).toBe("NON_COMPLIANT");
+      expect(result.violations.some((v) => v.rule === "INTEGER_OVERFLOW")).toBe(
+        true
+      );
+    });
+
+    it("should flag potential underflow in Rust file", async () => {
+      const content = `
+        fn test() {
+          let a = 5;
+          let b = a - 10;
+        }
+      `;
+      fs.writeFileSync(testFile, content);
+
+      const prData: PRData = {
+        pull_request: {
+          title: "Fix underflow bug in core contract",
+          body: "This PR fixes a potential underflow. Testing included.",
+          labels: ["security"],
+          base_branch: "main",
+          head_branch: "fix/underflow",
+          number: 2,
+          author: "security-expert",
+        },
+        files_modified: [testFile],
+        additions: 10,
+        deletions: 2,
+      };
+
+      const result = await engine.evaluate(prData);
+      expect(result.status).toBe("NON_COMPLIANT");
+      expect(result.violations.some((v) => v.rule === "INTEGER_UNDERFLOW")).toBe(
+        true
+      );
+    });
+
+    it("should not flag safe arithmetic", async () => {
+      const content = `
+        fn test() {
+          let a = 100;
+          let b = a + 50;
+        }
+      `;
+      fs.writeFileSync(testFile, content);
+
+      const prData: PRData = {
+        pull_request: {
+          title: "Safe arithmetic changes",
+          body: "This PR performs safe arithmetic. Tested thoroughly.",
+          labels: ["trivial"],
+          base_branch: "main",
+          head_branch: "feat/safe",
+          number: 3,
+          author: "developer",
+        },
+        files_modified: [testFile],
+        additions: 5,
+        deletions: 1,
+      };
+
+      const result = await engine.evaluate(prData);
+      expect(result.violations.some((v) => v.rule === "INTEGER_OVERFLOW")).toBe(
+        false
+      );
+      expect(result.violations.some((v) => v.rule === "INTEGER_UNDERFLOW")).toBe(
+        false
+      );
     });
   });
 });

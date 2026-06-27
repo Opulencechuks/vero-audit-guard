@@ -6,6 +6,7 @@
 import { execSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import OverflowChecker, { OverflowFinding } from "./overflow-checker";
 
 export interface PRData {
   pull_request: {
@@ -47,6 +48,7 @@ export interface EvaluationResult {
   violations_count: number;
   warnings_count: number;
   high_severity_violations: PolicyViolation[];
+  overflow_findings?: OverflowFinding[];
 }
 
 /**
@@ -55,8 +57,10 @@ export interface EvaluationResult {
 export class PolicyEngine {
   private policiesDir: string;
   private opaAvailable: boolean = false;
+  private overflowChecker: OverflowChecker;
 
   constructor(policiesDir?: string) {
+    this.overflowChecker = new OverflowChecker();
     this.policiesDir =
       policiesDir ||
       path.join(__dirname, "..", "policies");
@@ -83,15 +87,32 @@ export class PolicyEngine {
    * Evaluate PR data against policies
    */
   async evaluate(prData: PRData): Promise<EvaluationResult> {
+    // Run overflow checker on modified files
+    const overflowFindings = await this.overflowChecker.checkFiles(
+      prData.files_modified
+    );
+
+    // Enrich PR data with overflow findings for OPA
+    const enrichedPrData = {
+      ...prData,
+      overflow_findings: overflowFindings,
+    };
+
     if (!this.opaAvailable) {
-      return this.evaluateWithoutOPA(prData);
+      const result = await this.evaluateWithoutOPA(enrichedPrData);
+      result.overflow_findings = overflowFindings;
+      return result;
     }
 
     try {
-      return await this.evaluateWithOPA(prData);
+      const result = await this.evaluateWithOPA(enrichedPrData);
+      result.overflow_findings = overflowFindings;
+      return result;
     } catch (error) {
       console.error("[PolicyEngine] OPA evaluation failed:", error);
-      return this.evaluateWithoutOPA(prData);
+      const result = await this.evaluateWithoutOPA(enrichedPrData);
+      result.overflow_findings = overflowFindings;
+      return result;
     }
   }
 
@@ -237,6 +258,17 @@ export class PolicyEngine {
         message: `⚠️  Large changeset (${totalChanges} lines)`,
         detail:
           "Break large changes into smaller PRs for easier review",
+      });
+    }
+
+    // Overflow findings (for fallback evaluation)
+    const overflowFindings = (prData as any).overflow_findings || [];
+    for (const finding of overflowFindings) {
+      violations.push({
+        rule: finding.rule,
+        severity: finding.severity,
+        message: finding.message,
+        detail: `${finding.detail} (at ${finding.file}:${finding.line})`,
       });
     }
 
