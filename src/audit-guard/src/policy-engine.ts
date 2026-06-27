@@ -7,10 +7,7 @@ import { execSync } from "child_process";
 import { Keypair } from "@stellar/stellar-sdk";
 import * as fs from "fs";
 import * as path from "path";
-import DashboardClient from "./dashboard-client";
-import { getNextReportVersion } from "./report-version";
-import { SECURITY_TIPS, SecurityTip } from "./security-tips";
-import { sendAlert } from "./webhook";
+import OverflowChecker, { OverflowFinding } from "./overflow-checker";
 
 export interface PRData {
   pull_request: {
@@ -58,7 +55,7 @@ export interface EvaluationResult {
   violations_count: number;
   warnings_count: number;
   high_severity_violations: PolicyViolation[];
-  anchored_tx?: string;
+  overflow_findings?: OverflowFinding[];
 }
 
 /**
@@ -67,8 +64,10 @@ export interface EvaluationResult {
 export class PolicyEngine {
   private policiesDir: string;
   private opaAvailable: boolean = false;
+  private overflowChecker: OverflowChecker;
 
   constructor(policiesDir?: string) {
+    this.overflowChecker = new OverflowChecker();
     this.policiesDir =
       policiesDir ||
       path.join(__dirname, "..", "policies");
@@ -128,27 +127,32 @@ export class PolicyEngine {
    * Evaluate PR data against policies
    */
   async evaluate(prData: PRData): Promise<EvaluationResult> {
-    let result: EvaluationResult;
+    // Run overflow checker on modified files
+    const overflowFindings = await this.overflowChecker.checkFiles(
+      prData.files_modified
+    );
+
+    // Enrich PR data with overflow findings for OPA
+    const enrichedPrData = {
+      ...prData,
+      overflow_findings: overflowFindings,
+    };
 
     if (!this.opaAvailable) {
-      result = await this.evaluateWithoutOPA(prData);
-    } else {
-      try {
-        result = await this.evaluateWithOPA(prData);
-      } catch (error) {
-        console.error("[PolicyEngine] OPA evaluation failed:", error);
-        result = await this.evaluateWithoutOPA(prData);
-      }
+      const result = await this.evaluateWithoutOPA(enrichedPrData);
+      result.overflow_findings = overflowFindings;
+      return result;
     }
 
-    // Add security tip to result
-    result.security_tip = this.getSecurityTip(prData);
-
-    // Surface a maintenance-mode banner if the relayer/PR is in maintenance.
-    if (prData.maintenance_mode) {
-      result.maintenance_alert =
-        prData.maintenance_message ||
-        "Maintenance mode enabled — review automated checks before merge.";
+    try {
+      const result = await this.evaluateWithOPA(enrichedPrData);
+      result.overflow_findings = overflowFindings;
+      return result;
+    } catch (error) {
+      console.error("[PolicyEngine] OPA evaluation failed:", error);
+      const result = await this.evaluateWithoutOPA(enrichedPrData);
+      result.overflow_findings = overflowFindings;
+      return result;
     }
     return result;
   }
@@ -339,6 +343,17 @@ export class PolicyEngine {
         message: `⚠️  Large changeset (${totalChanges} lines)`,
         detail:
           "Break large changes into smaller PRs for easier review",
+      });
+    }
+
+    // Overflow findings (for fallback evaluation)
+    const overflowFindings = (prData as any).overflow_findings || [];
+    for (const finding of overflowFindings) {
+      violations.push({
+        rule: finding.rule,
+        severity: finding.severity,
+        message: finding.message,
+        detail: `${finding.detail} (at ${finding.file}:${finding.line})`,
       });
     }
 
