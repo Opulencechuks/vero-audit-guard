@@ -44,3 +44,7 @@ export type {
 } from "./crypto-scanner";
 export { CRYPTO_PATTERNS, CRYPTO_PATTERN_IDS } from "./crypto-patterns";
 export type { CryptoPattern, CryptoDetectionContext } from "./crypto-patterns";
+
+// Issue #101: Transaction gas profiling simulation
+export { default as GasProfiler } from "./gas-profiler";
+export type { GasProfileRequest, GasProfileResult, GasSeverity } from "./gas-profiler";
