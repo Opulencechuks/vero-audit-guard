@@ -45,7 +45,14 @@ export type {
 export { CRYPTO_PATTERNS, CRYPTO_PATTERN_IDS } from "./crypto-patterns";
 export type { CryptoPattern, CryptoDetectionContext } from "./crypto-patterns";
 
-// Issue #109: Standardizing security protocols and improving system resilience against vulnerabilities
-export { SecurityProtocolManager, enforceSecurityProtocols } from "./security-protocol";
-export type { SecurityProtocolResult } from "./security-protocol";
-
+// Issue #119: Relayer state vs chain state validation
+export { default as RelayerStateValidator } from "./relayer-state-validator";
+export type {
+  RelayerAccountState,
+  ChainAccountState,
+  PendingTransactionRecord,
+  RelayerStateDiscrepancy,
+  RelayerReconciliationResult,
+  RelayerValidatorOptions,
+  RelayerStateSeverity
+} from "./relayer-state-validator";
